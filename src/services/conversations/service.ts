@@ -2,7 +2,7 @@ import { db } from '@/db';
 import { conversations, messages, users, tickets } from '@/db/schema';
 import { eq, and, desc, sql, or } from 'drizzle-orm';
 import { getClock } from '@/lib/clock';
-import { NotFoundError, ValidationError } from '@/lib/errors';
+import { NotFoundError, ValidationError, StateTransitionError } from '@/lib/errors';
 
 export type ConversationState = 'agent' | 'aguardando_atendente' | 'com_analista' | 'encerrada';
 
@@ -200,7 +200,7 @@ export async function transitionConversation(
   }
 
   if (!canTransition(conv.state, newState)) {
-    throw new ValidationError(`Transição inválida de ${conv.state} para ${newState}`);
+    throw new StateTransitionError(`Transição inválida de ${conv.state} para ${newState}`);
   }
 
   const updateData: Record<string, unknown> = {
@@ -208,11 +208,15 @@ export async function transitionConversation(
     updatedAt: getClock().now(),
   };
 
-  if (newState === 'aguardando_atendente' || newState === 'com_analista') {
+  if (newState === 'com_analista') {
     if (!options?.analystId) {
-      throw new ValidationError('analystId obrigatório para esta transição');
+      throw new ValidationError('analystId obrigatório para assumir atendimento');
     }
     updateData.analystId = options.analystId;
+  } else if (newState === 'aguardando_atendente') {
+    if (options?.analystId) {
+      updateData.analystId = options.analystId;
+    }
   }
 
   if (newState === 'agent' && conv.state === 'com_analista') {

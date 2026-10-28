@@ -59,6 +59,13 @@ export class LegacySystemError extends AppError {
   }
 }
 
+export class StateTransitionError extends AppError {
+  constructor(message = 'Transição de estado inválida') {
+    super(message, 'STATE_TRANSITION_ERROR', 400);
+    this.name = 'StateTransitionError';
+  }
+}
+
 export function isAppError(error: unknown): error is AppError {
   return error instanceof AppError;
 }
