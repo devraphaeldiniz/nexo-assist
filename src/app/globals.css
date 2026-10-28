@@ -1,108 +1,168 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
-@layer base {
-  :root {
-    --paper: #FFFFFF;
-    --desk: #F6F7F9;
-    --ink: #1B2431;
-    --ink-2: #3D4656;
-    --ink-3: #5B6472;
-    --rule: #E6E8EC;
-    --cta: #0062C4;
-    --primary: #0285F7;
-    --success: #00BD6C;
-    --success-text: #00804A;
-    --warning: #F5A500;
-    --warning-text: #946300;
-    --danger: #EE343B;
-    --danger-text: #C4161D;
-    --violet: #A37AFF;
-    --violet-text: #6B3FE0;
-  }
+@theme {
+  --color-paper: #FFFFFF;
+  --color-desk: #F6F7F9;
+  --color-ink: #1B2431;
+  --color-ink-2: #3D4656;
+  --color-ink-3: #5B6472;
+  --color-rule: #E6E8EC;
+  --color-cta: #0062C4;
+  --color-primary: #0285F7;
+  --color-success: #00BD6C;
+  --color-success-text: #00804A;
+  --color-warning: #F5A500;
+  --color-warning-text: #946300;
+  --color-danger: #EE343B;
+  --color-danger-text: #C4161D;
+  --color-violet: #A37AFF;
+  --color-violet-text: #6B3FE0;
 
-  * {
-    @apply border-rule;
-  }
-
-  body {
-    @apply bg-desk text-ink font-ui antialiased;
-    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
-  }
-
-  h1, h2, h3, h4, h5, h6 {
-    @apply font-display font-semibold tracking-tight;
-  }
-
-  .font-display {
-    font-family: var(--font-newsreader), serif;
-  }
-
-  .font-ui {
-    font-family: var(--font-schibsted-grotesk), sans-serif;
-  }
-
-  .font-mono {
-    font-family: var(--font-ibm-plex-mono), monospace;
-  }
+  --radius-radius-10: 10px;
+  --radius-radius-14: 14px;
 }
 
-@layer components {
-  .btn {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-radius-10 font-ui font-medium text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
-  }
-
-  .btn-primary {
-    @apply btn bg-primary text-white hover:bg-cta focus-visible:ring-primary;
-  }
-
-  .btn-secondary {
-    @apply btn bg-white text-ink border border-rule hover:bg-desk focus-visible:ring-ink;
-  }
-
-  .btn-danger {
-    @apply btn bg-danger text-white hover:bg-danger-text focus-visible:ring-danger;
-  }
-
-  .btn-ghost {
-    @apply btn bg-transparent text-ink-2 hover:bg-desk hover:text-ink focus-visible:ring-ink;
-  }
-
-  .input {
-    @apply w-full px-3.5 py-2.5 rounded-radius-10 border border-rule bg-white text-ink placeholder-ink-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:border-transparent transition-colors;
-  }
-
-  .card {
-    @apply bg-white rounded-radius-14 border border-rule shadow-sm;
-  }
-
-  .ticket-card {
-    @apply card p-4 transition-all hover:shadow-md;
-  }
-
-  .confirmation-card {
-    @apply card p-4 border-2 border-primary bg-blue-50;
-  }
+* {
+  border-color: var(--color-rule);
 }
 
-@layer utilities {
-  .scrollbar-thin {
-    scrollbar-width: thin;
-    scrollbar-color: var(--rule) transparent;
-  }
+body {
+  background-color: var(--color-desk);
+  color: var(--color-ink);
+  font-family: var(--font-schibsted-grotesk), sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
 
-  .scrollbar-thin::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-  }
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-newsreader), serif;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
 
-  .scrollbar-thin::-webkit-scrollbar-track {
-    background: transparent;
-  }
+.font-display {
+  font-family: var(--font-newsreader), serif;
+}
 
-  .scrollbar-thin::-webkit-scrollbar-thumb {
-    background-color: var(--rule);
-    border-radius: 3px;
-  }
+.font-ui {
+  font-family: var(--font-schibsted-grotesk), sans-serif;
+}
+
+.font-mono {
+  font-family: var(--font-ibm-plex-mono), monospace;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1rem;
+  border-radius: 10px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background-color: var(--color-primary);
+  color: #FFFFFF;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background-color: var(--color-cta);
+}
+
+.btn-secondary {
+  background-color: #FFFFFF;
+  color: var(--color-ink);
+  border: 1px solid var(--color-rule);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background-color: var(--color-desk);
+}
+
+.btn-danger {
+  background-color: var(--color-danger);
+  color: #FFFFFF;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background-color: var(--color-danger-text);
+}
+
+.btn-ghost {
+  background-color: transparent;
+  color: var(--color-ink-2);
+}
+
+.btn-ghost:hover:not(:disabled) {
+  background-color: var(--color-desk);
+  color: var(--color-ink);
+}
+
+.input {
+  width: 100%;
+  padding: 0.625rem 0.875rem;
+  border-radius: 10px;
+  border: 1px solid var(--color-rule);
+  background-color: #FFFFFF;
+  color: var(--color-ink);
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.input:focus {
+  border-color: var(--color-primary);
+}
+
+.card {
+  background-color: #FFFFFF;
+  border-radius: 14px;
+  border: 1px solid var(--color-rule);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.ticket-card {
+  background-color: #FFFFFF;
+  border-radius: 14px;
+  border: 1px solid var(--color-rule);
+  padding: 1rem;
+  transition: box-shadow 0.15s ease;
+}
+
+.ticket-card:hover {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.confirmation-card {
+  background-color: #EFF6FF;
+  border-radius: 14px;
+  border: 2px solid var(--color-primary);
+  padding: 1rem;
+}
+
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-rule) transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: var(--color-rule);
+  border-radius: 3px;
 }
