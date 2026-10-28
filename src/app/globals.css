@@ -1,0 +1,108 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --paper: #FFFFFF;
+    --desk: #F6F7F9;
+    --ink: #1B2431;
+    --ink-2: #3D4656;
+    --ink-3: #5B6472;
+    --rule: #E6E8EC;
+    --cta: #0062C4;
+    --primary: #0285F7;
+    --success: #00BD6C;
+    --success-text: #00804A;
+    --warning: #F5A500;
+    --warning-text: #946300;
+    --danger: #EE343B;
+    --danger-text: #C4161D;
+    --violet: #A37AFF;
+    --violet-text: #6B3FE0;
+  }
+
+  * {
+    @apply border-rule;
+  }
+
+  body {
+    @apply bg-desk text-ink font-ui antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display font-semibold tracking-tight;
+  }
+
+  .font-display {
+    font-family: var(--font-newsreader), serif;
+  }
+
+  .font-ui {
+    font-family: var(--font-schibsted-grotesk), sans-serif;
+  }
+
+  .font-mono {
+    font-family: var(--font-ibm-plex-mono), monospace;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-radius-10 font-ui font-medium text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-primary {
+    @apply btn bg-primary text-white hover:bg-cta focus-visible:ring-primary;
+  }
+
+  .btn-secondary {
+    @apply btn bg-white text-ink border border-rule hover:bg-desk focus-visible:ring-ink;
+  }
+
+  .btn-danger {
+    @apply btn bg-danger text-white hover:bg-danger-text focus-visible:ring-danger;
+  }
+
+  .btn-ghost {
+    @apply btn bg-transparent text-ink-2 hover:bg-desk hover:text-ink focus-visible:ring-ink;
+  }
+
+  .input {
+    @apply w-full px-3.5 py-2.5 rounded-radius-10 border border-rule bg-white text-ink placeholder-ink-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:border-transparent transition-colors;
+  }
+
+  .card {
+    @apply bg-white rounded-radius-14 border border-rule shadow-sm;
+  }
+
+  .ticket-card {
+    @apply card p-4 transition-all hover:shadow-md;
+  }
+
+  .confirmation-card {
+    @apply card p-4 border-2 border-primary bg-blue-50;
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--rule) transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: var(--rule);
+    border-radius: 3px;
+  }
+}
