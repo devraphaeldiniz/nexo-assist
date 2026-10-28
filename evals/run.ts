@@ -35,6 +35,9 @@ async function getOrCreateConversationForUser(userId: number) {
     messageCount: 0,
     sessionStartedAt: getClock().now(),
   }).returning();
+  if (!conv) {
+    throw new Error('Falha ao criar conversa para usuário');
+  }
   return conv;
 }
 
@@ -87,6 +90,10 @@ async function runScenario(scenario: EvalScenario): Promise<EvalResult> {
         recentMessages: [],
         currentDate: getClock().now().toISOString(),
       });
+
+      if (!result) {
+        throw new Error('Agent returned undefined response');
+      }
       
       const latency = Date.now() - start;
       totalLatency += latency;
