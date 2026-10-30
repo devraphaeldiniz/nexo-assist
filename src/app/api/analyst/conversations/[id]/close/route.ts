@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromCookie } from '@/services/auth/service';
 import { conversationsService } from '@/services/conversations/service';
+import { ensureDb } from '@/lib/ensure-db';
 
 export const runtime = 'nodejs';
 
@@ -9,6 +10,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await ensureDb();
     const session = await getSessionFromCookie(request.headers.get('cookie') || '');
     if (!session || session.role !== 'analyst') {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });

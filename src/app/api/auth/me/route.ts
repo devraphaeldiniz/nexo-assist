@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromCookie } from '@/services/auth/service';
 import { getUserById } from '@/services/auth/service';
+import { ensureDb } from '@/lib/ensure-db';
 
 export const runtime = 'nodejs';
 
 export async function GET(request: NextRequest) {
   try {
+    await ensureDb();
     const session = await getSessionFromCookie(request.headers.get('cookie') || '');
     if (!session) {
       return NextResponse.json({ user: null });

@@ -6,6 +6,7 @@ import { applyGuardrails } from '@/agent/guardrails';
 import { estimateCostUsd } from '@/agent/cost';
 import { getClock } from '@/lib/clock';
 import { createLogger, generateTurnId } from '@/lib/logger';
+import { ensureDb } from '@/lib/ensure-db';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -15,6 +16,7 @@ export async function POST(request: NextRequest) {
   const logger = createLogger({ turnId });
 
   try {
+    await ensureDb();
     const session = await getSessionFromCookie(request.headers.get('cookie') || '');
     if (!session) {
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });

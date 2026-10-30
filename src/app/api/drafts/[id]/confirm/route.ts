@@ -6,6 +6,7 @@ import { eq, and } from 'drizzle-orm';
 import { ticketsClient } from '@/services/tickets/client';
 import { conversationsService } from '@/services/conversations/service';
 import { getClock } from '@/lib/clock';
+import { ensureDb } from '@/lib/ensure-db';
 
 export const runtime = 'nodejs';
 
@@ -14,6 +15,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await ensureDb();
     const session = await getSessionFromCookie(request.headers.get('cookie') || '');
     if (!session) {
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });

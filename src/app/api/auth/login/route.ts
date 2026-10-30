@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateUser, getSessionCookieOptions } from '@/services/auth/service';
+import { ensureDb } from '@/lib/ensure-db';
 
 export const runtime = 'nodejs';
 
 export async function POST(request: NextRequest) {
   try {
+    await ensureDb();
     const { email, password } = await request.json();
 
     if (!email || !password) {
