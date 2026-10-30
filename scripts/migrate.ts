@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { db } from '@/db';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 import path from 'path';

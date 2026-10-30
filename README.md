@@ -2,6 +2,26 @@
 
 Agent de atendimento de service desk de TI em chat, com console para analistas.
 
+> Teste técnico — Beyond the Bytes
+
+## Sumário
+
+- [Visão Geral](#visão-geral)
+- [Demonstração](#demonstração)
+- [Tecnologias](#tecnologias)
+- [Como Rodar](#como-rodar)
+- [Scripts Disponíveis](#scripts-disponíveis)
+- [Arquitetura](#arquitetura)
+- [Como o Agent Decide](#como-o-agent-decide)
+- [Transparência (3 Níveis)](#transparência-3-níveis)
+- [Regras de Negócio Implementadas](#regras-de-negócio-implementadas)
+- [Qualidade e Testes](#qualidade-e-testes)
+- [Segurança e Privacidade](#segurança-e-privacidade)
+- [Custo Estimado](#custo-estimado)
+- [Trade-offs Principais](#trade-offs-principais)
+- [O que Faria com Mais Tempo](#o-que-faria-com-mais-tempo)
+- [Estrutura de Commits](#estrutura-de-commits)
+
 ## Visão Geral
 
 O Nexo Assist é um agente conversacional que ajuda funcionários a resolver problemas de TI, consultar e abrir chamados, seguindo as regras do service desk da empresa Nexo. O projeto inclui:
@@ -11,14 +31,39 @@ O Nexo Assist é um agente conversacional que ajuda funcionários a resolver pro
 - **Agent transparente**: Cada decisão é explicada (o que entendeu, ação, confiança, por quê)
 - **Serviço de chamados simulado**: Com falhas injetáveis para testar resiliência
 
+## Demonstração
+
+<!--
+  TODO (preencher com a aplicação rodando via `npm run dev`):
+  - [ ] Print: tela de login
+  - [ ] Print: chat do funcionário (mensagem + chips de ação + painel de decisão expandido)
+  - [ ] Print: card de confirmação de rascunho de chamado
+  - [ ] Print: console do analista (lista de conversas + filtros)
+  - [ ] GIF: fluxo completo "relatar problema → rascunho → confirmação → chamado criado"
+  - [ ] GIF: transferência para analista (lado funcionário e lado analista)
+  - [ ] Vídeo curto (1-2 min): tour geral pela aplicação
+-->
+
+### Capturas de Tela
+
+| Login | Chat do Funcionário |
+|---|---|
+| ![Tela de login](docs/media/screenshot-login.jpg) | ![Chat do funcionário](docs/media/screenshot-chat.jpg) |
+
+| Painel de Decisão do Agent | Console do Analista |
+|---|---|
+| ![Painel de decisão](docs/media/screenshot-decision-panel.jpg) | ![Console do analista](docs/media/screenshot-console.jpg) |
+
+*(Capturadas com a aplicação rodando localmente: login, chat do funcionário com o agent, o painel "Ver decisão" com o card de confirmação do rascunho de chamado, e o console do analista.)*
+
 ## Tecnologias
 
-- **Next.js 14** (App Router) + React 18 + TypeScript (strict)
-- **Mastra** para o agent + **AI SDK** com Anthropic (Claude)
-- **SQLite** + **Drizzle ORM** para persistência
-- **Tailwind CSS** com design tokens do protótipo
-- **Vitest** para testes
-- **iron-session** + **jose** para autenticação
+- **Next.js 16** (App Router, Turbopack) + React 19 + TypeScript (strict, `noUncheckedIndexedAccess`)
+- **Mastra** para o agent + **AI SDK** com Anthropic (Claude) / Google (Gemini)
+- **SQLite** (`@libsql/client`) + **Drizzle ORM** para persistência
+- **Tailwind CSS 4** com design tokens do protótipo
+- **Vitest 5** para testes
+- **jose** (JWT) para autenticação por sessão
 
 ## Como Rodar
 
@@ -28,7 +73,7 @@ npm install
 
 # 2. Configurar variáveis de ambiente
 cp .env.example .env
-# Edite .env e adicione sua ANTHROPIC_API_KEY
+# Edite .env e adicione sua ANTHROPIC_API_KEY (ou GOOGLE_GENERATIVE_AI_API_KEY, conforme LLM_MODEL)
 
 # 3. Criar banco e rodar migrations
 npm run db:migrate
@@ -42,6 +87,8 @@ npm run dev
 
 Acesse `http://localhost:3000`
 
+> **Nota:** os scripts em `scripts/` e `evals/` carregam o `.env` explicitamente (`import 'dotenv/config'`) porque são executados via `tsx`, fora do runtime do Next.js — que carrega `.env` automaticamente. Se `DB_PATH` não estiver definido no `.env`, eles caem no mesmo default usado por `src/db/index.ts` (`data/nexo-assist.db`), então **sempre confirme que `.env` existe antes de migrar/popular o banco**, para não acabar com dois arquivos de banco diferentes (um usado pelo `npm run dev`, outro pelos scripts).
+
 ### Credenciais de Demonstração
 
 | Papel | E-mail | Senha |
@@ -50,6 +97,8 @@ Acesse `http://localhost:3000`
 | Funcionário | carla.mendes@nexo.com.br | qualquer |
 | Analista (N2) | rafael.lima@nexo.com.br | qualquer |
 | Analista (N1) | marina.silva@nexo.com.br | qualquer |
+
+A senha não é validada nesta versão (ver [Trade-offs Principais](#trade-offs-principais)) — qualquer valor não vazio autentica pelo e-mail.
 
 ## Scripts Disponíveis
 
@@ -174,6 +223,8 @@ evals/                    # Cenários de avaliação do agent
 - Idempotência de confirmação
 - Retry/timeout do client legado
 
+43/43 testes passando (`npm run test`), rodando contra o mesmo banco (`DB_PATH` do `.env`) usado por `npm run dev` — ver nota de configuração do Vitest em [Trade-offs Principais](#trade-offs-principais).
+
 ### Avaliação do Agent (`npm run eval`)
 20+ cenários com modelo real:
 - VPN erro 809 + Windows 11 → rascunho INC/Rede e VPN
@@ -198,8 +249,8 @@ evals/                    # Cenários de avaliação do agent
 
 ## Custo Estimado
 
-- Modelo padrão: **Claude 3 Haiku** (~$0.25/M input, $1.25/M output tokens)
-- Conversa típica (8-12 turns): ~$0.001-0.003
+- Modelo padrão: **Claude 3.5 Haiku** (configurável via `LLM_MODEL`, ex.: `google/gemini-3.8-flash`)
+- Conversa típica (8-12 turns): ~$0.001-0.003 (Haiku) ou gratuito (tier free do Gemini)
 - Janela de histórico limitada + resumo para controlar custo
 - Prompt caching do system prompt quando suportado
 
@@ -209,9 +260,11 @@ evals/                    # Cenários de avaliação do agent
 |---------|---------------|
 | SQLite em arquivo | Simplicidade, persistência local, atende requisito de sobrevivência a reinício |
 | BM25 em vez de embeddings | Suficiente para 8-10 artigos; sem dependência externa; determinístico |
-| Feriados ignorados no SLA | Trade-off declarado; simplifica cálculo; documentado no README |
+| Feriados ignorados no SLA | Trade-off declarado; simplifica cálculo |
 | SSE não implementado (polling) | Simplicidade no Next.js App Router; polling de 2s para tempo real analista→funcionário |
-| Haiku como default | Custo 10x menor que Sonnet; qualidade suficiente para classificação e tools |
+| Haiku/Gemini Flash como default | Custo baixo (ou gratuito); qualidade suficiente para classificação e tools |
+| Senha não validada no login | Fora do escopo do desafio (autenticação simulada); autenticação real exigiria hash+salt e fluxo de recuperação, não priorizado frente às regras de negócio do service desk |
+| Scripts fora do Next.js carregam `.env` manualmente | `tsx` (migrate/seed/reset) e Vitest não carregam `.env` como o runtime do Next.js faz — cada um importa `dotenv/config` explicitamente para garantir que apontam para o mesmo banco que `npm run dev` usa |
 
 ## O que Faria com Mais Tempo
 
@@ -222,6 +275,7 @@ evals/                    # Cenários de avaliação do agent
 - [ ] Internacionalização (i18n)
 - [ ] Acessibilidade completa (WCAG 2.1 AA)
 - [ ] Notificações push/email para analista quando transferido
+- [ ] Remover os últimos usos de `any` não essenciais (mapeamento de linhas de JOIN manual) adicionando tipos de linha explícitos por query
 
 ## Estrutura de Commits
 
@@ -232,9 +286,11 @@ feat(tickets): serviço simulado com falhas injetáveis
 feat(agent): tools com Zod + saída estruturada AgentTurn
 feat(chat): streaming + chips de ação + painel de decisão
 feat(console): lista/filtros + assumir/devolver/encerrar
+fix(auth): carrega DB_PATH do .env em scripts tsx (migrate/seed/reset)
+fix(tickets): usa dueAt persistido em vez de recalcular a partir de createdAt
 test(sla): cobertura completa de horas úteis e edge cases
 eval: 20 cenários + relatório de confiança média
-docs: README com arquitetura, decisões e trade-offs
+docs: README com arquitetura, decisões, trade-offs e demonstração
 ```
 
 ## Licença

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromCookie } from '@/services/auth/service';
-import { conversationsService } from '@/services/conversations/service';
+import { conversationsService, ConversationState } from '@/services/conversations/service';
 
 export const runtime = 'nodejs';
 
@@ -12,7 +12,9 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    const state = searchParams.get('state') as any;
+    const stateParam = searchParams.get('state');
+    const validStates: ConversationState[] = ['agent', 'aguardando_atendente', 'com_analista', 'encerrada'];
+    const state = validStates.includes(stateParam as ConversationState) ? (stateParam as ConversationState) : undefined;
     const filter = searchParams.get('filter');
 
     let conversations;

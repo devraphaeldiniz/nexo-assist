@@ -26,6 +26,10 @@ interface Message {
   role: 'user' | 'assistant' | 'system' | 'analyst';
   content: string;
   uiKind?: string;
+  // Payloads de UI (ticket_card, options, etc.) e o trace de decisão do agent
+  // têm shapes variados por uiKind/ação; tipar como union aqui duplicaria os
+  // tipos já definidos em agent/trace.ts e agent/decision.ts sem ganho real
+  // neste componente, que só repassa esses dados para renderização.
   uiData?: any;
   decisionTrace?: any;
   createdAt: string;

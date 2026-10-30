@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.90",
+    "@ai-sdk/google": "^4.0.107",
     "@libsql/client": "^0.18.0",
     "@mastra/core": "^1.79.0",
     "ai": "^7.0.155",

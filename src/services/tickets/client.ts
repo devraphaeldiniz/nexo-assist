@@ -2,7 +2,7 @@ import { db } from '@/db';
 import { tickets, ticketEvents, users } from '@/db/schema';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import { LegacySystemError, NotFoundError, ConflictError } from '@/lib/errors';
-import { calculateSLA, Priority } from '@/services/sla';
+import { calculateSLA, getSLAStatusFromDueAt, Priority } from '@/services/sla';
 import { getClock } from '@/lib/clock';
 
 export interface TicketData {
@@ -63,9 +63,16 @@ function generateTicketNumber(type: 'INC' | 'REQ'): string {
   return `${prefix}-${timestamp}${random}`;
 }
 
+// `row` vem de um JOIN manual (tickets + users) sem tipo gerado pelo Drizzle;
+// o retorno tipado (`TicketWithDetails`) é o contrato real desta função.
 function mapTicketRow(row: any): TicketWithDetails {
   const priority = row.priority as Priority;
-  const sla = calculateSLA(row.createdAt, priority, getClock());
+  // Usa o dueAt já persistido (recalculado corretamente em create/reopen),
+  // em vez de recalcular a partir de createdAt — isso ficava errado para
+  // chamados reabertos, cujo prazo é recontado a partir da reabertura.
+  const sla = row.dueAt
+    ? getSLAStatusFromDueAt(row.dueAt, priority, getClock())
+    : { isOverdue: false, businessHoursRemaining: 0 };
   return {
     id: row.id,
     number: row.number,

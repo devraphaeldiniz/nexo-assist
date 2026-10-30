@@ -48,6 +48,9 @@ export function canTransition(from: ConversationState, to: ConversationState): b
   return VALID_TRANSITIONS[from]?.includes(to) ?? false;
 }
 
+// `row` vem de um JOIN manual (drizzle `sql`/`leftJoin`) cujo shape não tem
+// um tipo gerado pelo Drizzle; tipar aqui duplicaria o schema do SELECT.
+// O retorno tipado (`ConversationWithDetails`) é o contrato real desta função.
 function mapConversationRow(row: any): ConversationWithDetails {
   return {
     id: row.id,

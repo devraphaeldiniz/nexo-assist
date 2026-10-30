@@ -42,6 +42,10 @@ export async function getSessionFromCookie(cookies: string): Promise<SessionPayl
   return verifySession(decodeURIComponent(match[1]));
 }
 
+// `user` é o shape retornado pelo Drizzle (`typeof users.$inferSelect`), mas
+// preferimos não importar o tipo de linha do schema aqui para não acoplar o
+// retorno público do service ao modelo de dados interno (service → db é uma
+// via de mão única, mas o inverso não precisa "vazar" para os chamadores).
 export async function authenticateUser(email: string, _password: string): Promise<{ user: any; token: string }> {
   const user = await db
     .select()

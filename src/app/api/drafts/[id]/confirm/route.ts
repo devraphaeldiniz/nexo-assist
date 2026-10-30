@@ -35,6 +35,9 @@ export async function POST(
       return NextResponse.json({ error: 'Rascunho já foi processado' }, { status: 400 });
     }
 
+    // `payload` é jsonb no schema (Drizzle não tipa colunas JSON automaticamente);
+    // o shape real é o input validado por Zod em agent/tools/index.ts
+    // (prepararRascunho) no momento em que o rascunho foi criado.
     const payload = draft[0].payload as any;
     const { tipo, titulo, descricao, tipoChamado, categoria, prioridade, chamadoId, numeroChamado } = payload;
 

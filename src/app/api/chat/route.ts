@@ -3,6 +3,7 @@ import { getSessionFromCookie } from '@/services/auth/service';
 import { conversationsService } from '@/services/conversations/service';
 import { runAgent } from '@/agent/nexo-agent';
 import { applyGuardrails } from '@/agent/guardrails';
+import { estimateCostUsd } from '@/agent/cost';
 import { getClock } from '@/lib/clock';
 import { createLogger, generateTurnId } from '@/lib/logger';
 
@@ -31,24 +32,25 @@ export async function POST(request: NextRequest) {
     const conversation = await conversationsService.getOrCreateConversation(session.userId);
     const conversationId = conversation.id;
 
+    // Conversa não está com o agent: registra a mensagem e NÃO chama o LLM.
+    // Essa checagem é a primeira coisa que fazemos, antes de qualquer custo
+    // de modelo, e cobre tanto 'aguardando_atendente' quanto 'com_analista'.
     if (conversation.state !== 'agent') {
       await conversationsService.addMessage(conversationId, {
         role: 'user',
         content: message,
       });
 
+      const waitingMessage =
+        conversation.state === 'com_analista'
+          ? 'Sua mensagem foi enviada ao analista.'
+          : 'Sua conversa está aguardando um analista. Sua mensagem foi registrada.';
+
       return NextResponse.json({
-        message: 'Sua conversa está com um analista. Por favor, aguarde.',
-        ui: { kind: 'options', question: 'Aguardando analista...', options: ['OK'] },
-        decision: {
-          intent: 'outro',
-          understood: 'Usuário enviou mensagem mas conversa está com analista',
-          action: 'Mensagem registrada, agent pausado',
-          confidence: 1,
-          reasoning: 'Estado da conversa não permite atuação do agent',
-          rulesApplied: ['Agent pausado durante atendimento humano'],
-        },
+        message: waitingMessage,
+        state: conversation.state,
         turnId,
+        messageCount: conversation.messageCount + 1,
       });
     }
 
@@ -73,6 +75,7 @@ export async function POST(request: NextRequest) {
           reasoning: 'Limite de mensagens por sessão atingido',
           rulesApplied: ['Limite de 30 mensagens por sessão'],
         },
+        state: conversation.state,
         turnId,
       });
     }
@@ -89,13 +92,14 @@ export async function POST(request: NextRequest) {
     }));
 
     const currentDate = getClock().now().toISOString();
+    const conversationDetails = await conversationsService.getConversationById(conversationId);
 
     const agentResult = await runAgent(message.trim(), {
       conversationId,
       userId: session.userId,
       userEmail: session.email,
-      userName: (await conversationsService.getConversationById(conversationId))?.userName || session.email,
-      userDepartment: (await conversationsService.getConversationById(conversationId))?.userDepartment || '',
+      userName: conversationDetails?.userName || session.email,
+      userDepartment: conversationDetails?.userDepartment || '',
       conversationState: conversation.state,
       recentMessages: formattedMessages,
       currentDate,
@@ -104,33 +108,44 @@ export async function POST(request: NextRequest) {
     if (!agentResult) {
       logger.error('Agent returned undefined result', { conversationId, userId: session.userId });
       return NextResponse.json(
-        { error: 'Erro ao processar resposta do agente', turnId },
-        { status: 500 }
+        { error: 'O agent não conseguiu gerar uma resposta válida. Tente reformular sua mensagem.', turnId },
+        { status: 502 }
       );
     }
 
-    const guardrailResult = applyGuardrails(agentResult, {
+    const { turn: agentTurn, toolTrace, usage } = agentResult;
+
+    const guardrailResult = applyGuardrails(agentTurn, {
       conversationState: conversation.state,
       hasConfirmation: false,
-      isWritingAction: ['abrir_chamado', 'atualizar_chamado'].includes(agentResult.decision.intent),
+      isWritingAction: ['abrir_chamado', 'atualizar_chamado'].includes(agentTurn.decision.intent),
     });
 
-    const finalTurn = guardrailResult.modifiedTurn || agentResult;
+    const finalTurn = guardrailResult.modifiedTurn || agentTurn;
+    // Se um guardrail bloqueou a ação, o trace de tools ainda reflete o que
+    // o agent realmente consultou antes de ser barrado (transparência).
+    const modelName = process.env.LLM_MODEL || 'claude-3-5-haiku-20241022';
+    const costUsd = estimateCostUsd(modelName, usage.inputTokens, usage.outputTokens);
 
     await conversationsService.addMessage(conversationId, {
       role: 'assistant',
       content: finalTurn.message,
       uiKind: finalTurn.ui?.kind,
-      uiData: finalTurn.ui ? { ...finalTurn.ui, kind: undefined } : undefined,
-      decisionTrace: finalTurn.decision,
-      tokensIn: 0,
-      tokensOut: 0,
-      costUsd: '0.00',
+      uiData: finalTurn.ui,
+      decisionTrace: {
+        decision: finalTurn.decision,
+        toolCalls: toolTrace,
+        model: modelName,
+      },
+      tokensIn: usage.inputTokens,
+      tokensOut: usage.outputTokens,
+      costUsd: costUsd.toFixed(6),
     });
 
     logger.info('Agent turn completed', {
       intent: finalTurn.decision.intent,
       confidence: finalTurn.decision.confidence,
+      toolCallCount: toolTrace.length,
       conversationId,
       userId: session.userId,
     });
@@ -139,6 +154,11 @@ export async function POST(request: NextRequest) {
       message: finalTurn.message,
       ui: finalTurn.ui,
       decision: finalTurn.decision,
+      toolCalls: toolTrace,
+      tokensIn: usage.inputTokens,
+      tokensOut: usage.outputTokens,
+      costUsd,
+      state: conversation.state,
       turnId,
       messageCount: conversation.messageCount + 1,
     });

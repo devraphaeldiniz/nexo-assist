@@ -63,6 +63,11 @@ export function applyGuardrails(turn: AgentTurn, context: {
       reason: 'Ação de escrita sem confirmação do usuário',
       modifiedTurn: {
         message: 'Preciso da sua confirmação antes de criar ou atualizar o chamado.',
+        // Preserva o `ui` (ex.: { kind: 'draft', draftId }) que o agent já montou
+        // a partir do retorno de preparar_rascunho. Sem isso, o card de
+        // confirmação nunca aparece e o usuário fica sem como confirmar —
+        // justamente a ação que este guardrail existe para exigir confirmação.
+        ui: turn.ui,
         decision: {
           ...decision,
           action: 'Aguardando confirmação do usuário',

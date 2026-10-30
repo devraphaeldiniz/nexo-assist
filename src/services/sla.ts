@@ -138,6 +138,48 @@ export function calculateSLA(
   return { dueAt, isOverdue, businessHoursRemaining };
 }
 
+export function getSLAStatusFromDueAt(
+  dueAt: Date,
+  priority: Priority,
+  clock: Clock = getClock()
+): Omit<SLACalculation, 'dueAt'> {
+  const now = clock.now();
+  const isOverdue = now > dueAt;
+
+  let businessHoursRemaining = 0;
+  if (!isOverdue) {
+    if (priority === 'critica') {
+      businessHoursRemaining = Math.max(0, (dueAt.getTime() - now.getTime()) / (1000 * 60 * 60));
+    } else {
+      let current = new Date(now);
+      let remaining = 0;
+      const target = new Date(dueAt);
+
+      while (current < target) {
+        if (isWeekend(current)) {
+          current = nextBusinessDay(current);
+          continue;
+        }
+        if (!isBusinessHours(current)) {
+          if (current.getHours() < BUSINESS_START_HOUR) {
+            current = startOfBusinessDay(current);
+          } else {
+            current = startOfBusinessDay(nextBusinessDay(current));
+          }
+          continue;
+        }
+        const endOfDay = endOfBusinessDay(current);
+        const nextStep = endOfDay < target ? endOfDay : target;
+        remaining += (nextStep.getTime() - current.getTime()) / (1000 * 60 * 60);
+        current = nextStep;
+      }
+      businessHoursRemaining = Math.max(0, remaining);
+    }
+  }
+
+  return { isOverdue, businessHoursRemaining };
+}
+
 export function getPriorityFromImpactUrgency(impact: 'equipe' | 'pessoa' | 'atrapalha' | 'melhoria', urgency: 'hoje' | 'semana' | 'sem_urgencia'): Priority {
   if (impact === 'equipe') return 'critica';
   if (impact === 'pessoa' && urgency === 'hoje') return 'alta';

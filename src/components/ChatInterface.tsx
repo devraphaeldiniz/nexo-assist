@@ -3,6 +3,22 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 
+interface ToolCallTrace {
+  toolName: string;
+  label: string;
+  input?: unknown;
+  output?: unknown;
+}
+
+interface Decision {
+  intent: string;
+  understood: string;
+  action: string;
+  confidence: number;
+  reasoning: string;
+  rulesApplied: string[];
+}
+
 interface Message {
   id: number;
   role: 'user' | 'assistant' | 'system' | 'analyst';
@@ -15,14 +31,11 @@ interface Message {
     ticketNumber?: string;
     draftId?: string;
   };
-  decision?: {
-    intent: string;
-    understood: string;
-    action: string;
-    confidence: number;
-    reasoning: string;
-    rulesApplied: string[];
-  };
+  decision?: Decision;
+  toolCalls?: ToolCallTrace[];
+  tokensIn?: number;
+  tokensOut?: number;
+  costUsd?: number | string;
   createdAt: string;
 }
 
@@ -34,6 +47,42 @@ interface User {
   role: 'employee' | 'analyst';
   avatarInitials: string;
 }
+
+// Shape persistido em messages.decisionTrace (ver src/app/api/chat/route.ts).
+// Lido de forma defensiva: algumas mensagens antigas podem ter sido
+// gravadas antes dessa estrutura existir (só o decision, sem toolCalls).
+interface RawMessageRow {
+  id: number;
+  role: Message['role'];
+  content: string;
+  uiData?: Message['ui'];
+  decisionTrace?: { decision?: Decision; toolCalls?: ToolCallTrace[] } | Decision;
+  tokensIn?: number | null;
+  tokensOut?: number | null;
+  costUsd?: string | null;
+  createdAt: string;
+}
+
+function normalizeMessage(row: RawMessageRow): Message {
+  const trace = row.decisionTrace as { decision?: Decision; toolCalls?: ToolCallTrace[] } & Partial<Decision> | undefined;
+  const decision: Decision | undefined = trace?.decision ?? (trace?.intent ? (trace as unknown as Decision) : undefined);
+  const toolCalls: ToolCallTrace[] = trace?.toolCalls ?? [];
+
+  return {
+    id: row.id,
+    role: row.role,
+    content: row.content,
+    ui: row.uiData,
+    decision,
+    toolCalls,
+    tokensIn: row.tokensIn ?? undefined,
+    tokensOut: row.tokensOut ?? undefined,
+    costUsd: row.costUsd ?? undefined,
+    createdAt: row.createdAt,
+  };
+}
+
+const POLL_INTERVAL_MS = 3000;
 
 export function ChatInterface() {
   const router = useRouter();
@@ -47,6 +96,8 @@ export function ChatInterface() {
   const [showDecisionPanel, setShowDecisionPanel] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const conversationIdRef = useRef<number | null>(null);
+  const loadingRef = useRef(false);
+  const localIdCounter = useRef(-1);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -56,11 +107,27 @@ export function ChatInterface() {
     scrollToBottom();
   }, [messages, scrollToBottom]);
 
-  useEffect(() => {
-    loadSession();
+  const loadConversation = useCallback(async () => {
+    // Evita sobrescrever uma mensagem otimista local enquanto um envio
+    // ainda está em voo (o próprio sendMessage já atualiza o estado ao
+    // terminar).
+    if (loadingRef.current) return;
+    try {
+      const res = await fetch('/api/chat/history');
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.messages) {
+        setMessages((data.messages as RawMessageRow[]).map(normalizeMessage));
+        setMessageCount(data.messageCount || 0);
+        setConversationState(data.state || 'agent');
+        conversationIdRef.current = data.conversationId;
+      }
+    } catch (err) {
+      console.error('Failed to load conversation:', err);
+    }
   }, []);
 
-  const loadSession = async () => {
+  const loadSession = useCallback(async () => {
     try {
       const res = await fetch('/api/auth/me');
       const data = await res.json();
@@ -69,33 +136,30 @@ export function ChatInterface() {
         return;
       }
       setUser(data.user);
-      loadConversation();
+      await loadConversation();
     } catch {
       router.push('/login');
     }
-  };
+  }, [router, loadConversation]);
 
-  const loadConversation = async () => {
-    try {
-      const res = await fetch('/api/chat/history');
-      if (!res.ok) return;
-      const data = await res.json();
-      if (data.messages) {
-        setMessages(data.messages);
-        setMessageCount(data.messageCount || 0);
-        setConversationState(data.state || 'agent');
-        conversationIdRef.current = data.conversationId;
-      }
-    } catch (err) {
-      console.error('Failed to load conversation:', err);
-    }
-  };
+  useEffect(() => {
+    loadSession();
+  }, [loadSession]);
+
+  // Polling: mantém o funcionário sincronizado com o que o analista escreve
+  // (e com o estado da conversa) sem precisar recarregar a página.
+  useEffect(() => {
+    if (!user) return;
+    const interval = setInterval(loadConversation, POLL_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [user, loadConversation]);
 
   const sendMessage = async (content: string) => {
     if (!content.trim() || loading) return;
 
+    localIdCounter.current -= 1;
     const userMessage: Message = {
-      id: Date.now(),
+      id: localIdCounter.current,
       role: 'user',
       content: content.trim(),
       createdAt: new Date().toISOString(),
@@ -104,6 +168,7 @@ export function ChatInterface() {
     setMessages(prev => [...prev, userMessage]);
     setInput('');
     setLoading(true);
+    loadingRef.current = true;
     setError('');
 
     try {
@@ -121,23 +186,39 @@ export function ChatInterface() {
         return;
       }
 
-      const assistantMessage: Message = {
-        id: data.turnId ? parseInt(data.turnId, 10) : Date.now() + 1,
-        role: 'assistant',
-        content: data.message,
-        ui: data.ui,
-        decision: data.decision,
-        createdAt: new Date().toISOString(),
-      };
-
-      setMessages(prev => [...prev, assistantMessage]);
-      setMessageCount(data.messageCount || 0);
       setConversationState(data.state || 'agent');
+      setMessageCount(data.messageCount || 0);
+
+      // Respostas do agent trazem decision/toolCalls/ui; respostas quando a
+      // conversa está com analista só confirmam o recebimento (sem chamar o
+      // LLM) — nesse caso não criamos bolha extra, o polling trará a
+      // conversa real.
+      if (data.decision) {
+        localIdCounter.current -= 1;
+        const assistantMessage: Message = {
+          id: localIdCounter.current,
+          role: 'assistant',
+          content: data.message,
+          ui: data.ui,
+          decision: data.decision,
+          toolCalls: data.toolCalls,
+          tokensIn: data.tokensIn,
+          tokensOut: data.tokensOut,
+          costUsd: data.costUsd,
+          createdAt: new Date().toISOString(),
+        };
+        setMessages(prev => [...prev, assistantMessage]);
+      }
     } catch {
       setError('Erro de conexão. Tente novamente.');
       setMessages(prev => prev.slice(0, -1));
     } finally {
       setLoading(false);
+      loadingRef.current = false;
+      // Sincroniza com a verdade do servidor logo após enviar (cobre o caso
+      // de a conversa estar com analista: traz a mensagem real do analista,
+      // se já houver).
+      loadConversation();
     }
   };
 
@@ -151,8 +232,9 @@ export function ChatInterface() {
       const res = await fetch(`/api/drafts/${draftId}/confirm`, { method: 'POST' });
       const data = await res.json();
       if (res.ok) {
+        localIdCounter.current -= 1;
         const systemMessage: Message = {
-          id: Date.now(),
+          id: localIdCounter.current,
           role: 'system',
           content: data.message,
           ui: { kind: 'ticket_card', ticketNumber: data.ticketNumber },
@@ -175,8 +257,9 @@ export function ChatInterface() {
       const res = await fetch(`/api/drafts/${draftId}/cancel`, { method: 'POST' });
       const data = await res.json();
       if (res.ok) {
+        localIdCounter.current -= 1;
         const systemMessage: Message = {
-          id: Date.now(),
+          id: localIdCounter.current,
           role: 'system',
           content: data.message,
           createdAt: new Date().toISOString(),
@@ -218,7 +301,8 @@ export function ChatInterface() {
     );
   }
 
-  const isAnalystChat = conversationState === 'com_analista' || conversationState === 'aguardando_atendente';
+  const withHuman = conversationState === 'com_analista' || conversationState === 'aguardando_atendente';
+  const sessionEnded = conversationState === 'encerrada';
 
   return (
     <div className="min-h-screen flex flex-col bg-desk" style={{ fontFamily: 'var(--font-schibsted-grotesk)' }}>
@@ -254,13 +338,13 @@ export function ChatInterface() {
               </svg>
               Atendimento
             </button>
-            <button className="w-full text-left px-3 py-2 rounded-radius-10 hover:bg-desk transition-colors font-medium text-ink-3 flex items-center gap-2">
+            <a href="/perfil" className="w-full text-left px-3 py-2 rounded-radius-10 hover:bg-desk transition-colors font-medium text-ink-3 flex items-center gap-2">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-ink-3">
                 <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
                 <circle cx="12" cy="7" r="4"></circle>
               </svg>
               Meu perfil
-            </button>
+            </a>
           </nav>
           <div className="mt-auto p-4 border-t border-rule">
             <div className="flex items-center gap-3 p-2 rounded-radius-10 bg-desk">
@@ -283,8 +367,14 @@ export function ChatInterface() {
               <span className="font-medium text-ink">Atendimento</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-success"></span>
-              <span className="text-sm text-success-text font-medium">Assistente online</span>
+              <span className={`w-2 h-2 rounded-full ${withHuman ? 'bg-violet' : 'bg-success'}`}></span>
+              <span className={`text-sm font-medium ${withHuman ? 'text-violet-text' : 'text-success-text'}`}>
+                {conversationState === 'com_analista'
+                  ? 'Com um analista'
+                  : conversationState === 'aguardando_atendente'
+                  ? 'Aguardando analista'
+                  : 'Assistente online'}
+              </span>
             </div>
           </div>
 
@@ -335,52 +425,63 @@ export function ChatInterface() {
           )}
 
           <div className="p-4 bg-white border-t border-rule">
-            {isAnalystChat ? (
-              <div className="p-3 rounded-radius-10 bg-warning/10 border border-warning/20 text-warning-text text-sm">
-                {conversationState === 'aguardando_atendente' ? (
-                  'Aguardando um analista assumir...'
-                ) : (
-                  'Você está conversando com um analista. Suas mensagens vão direto para ele.'
-                )}
+            {withHuman && (
+              <div className="mb-2 p-2.5 rounded-radius-10 bg-violet/10 border border-violet/20 text-violet-text text-sm">
+                {conversationState === 'aguardando_atendente'
+                  ? 'Aguardando um analista assumir o atendimento. Você pode continuar escrevendo.'
+                  : 'Você está falando com um analista — o assistente está pausado.'}
+              </div>
+            )}
+
+            {sessionEnded ? (
+              <div className="p-3 rounded-radius-10 bg-desk border border-rule text-ink-3 text-sm text-center">
+                Este atendimento foi encerrado.
+                <button onClick={handleNewSession} className="ml-2 text-primary underline">Iniciar nova conversa</button>
               </div>
             ) : (
               <>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs text-ink-3">
-                    {messageCount}/30 mensagens nesta sessão
-                  </span>
-                  {messageCount >= 25 && (
-                    <span className="text-xs text-warning-text font-medium">⚠ Perto do limite</span>
-                  )}
-                </div>
+                {!withHuman && (
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs text-ink-3">
+                      {messageCount}/30 mensagens nesta sessão
+                    </span>
+                    {messageCount >= 25 && (
+                      <span className="text-xs text-warning-text font-medium">⚠ Perto do limite</span>
+                    )}
+                  </div>
+                )}
                 <div className="flex gap-2">
                   <textarea
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey && (e.metaKey || e.ctrlKey)) {
+                      // Enter envia (padrão de qualquer chat); Shift+Enter quebra linha.
+                      // (Ctrl/⌘+Enter também funciona, por compatibilidade com quem já se acostumou.)
+                      if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault();
                         sendMessage(input);
                       }
                     }}
-                    placeholder={isAnalystChat ? 'Aguardando analista...' : 'Descreva seu problema ou faça uma pergunta...'}
+                    placeholder={withHuman ? 'Escreva para o analista…' : 'Escreva para o Nexo…'}
                     className="flex-1 input resize-none min-h-[44px] max-h-32"
                     rows={1}
-                    disabled={isAnalystChat || loading}
+                    disabled={loading}
                   />
                   <button
                     onClick={() => sendMessage(input)}
-                    disabled={!input.trim() || loading || isAnalystChat}
+                    disabled={!input.trim() || loading}
                     className="btn-primary self-end mb-1"
                   >
                     {loading ? 'Enviando...' : 'Enviar'}
                   </button>
                 </div>
-                <p className="text-xs text-ink-3 mt-1">⌘+Enter para enviar | Limite: 30 mensagens/sessão</p>
+                {!withHuman && (
+                  <p className="text-xs text-ink-3 mt-1">Enter para enviar, Shift+Enter para nova linha | Limite: 30 mensagens/sessão</p>
+                )}
               </>
             )}
 
-            {messageCount >= 30 && !isAnalystChat && (
+            {messageCount >= 30 && !withHuman && (
               <div className="mt-3 p-3 rounded-radius-10 bg-warning/10 border border-warning/20 text-warning-text text-sm">
                 Limite de 30 mensagens atingido.
                 <button onClick={handleNewSession} className="ml-2 text-warning underline">Iniciar nova sessão</button>
@@ -425,9 +526,17 @@ function MessageBubble({
   const isAnalyst = message.role === 'analyst';
   const isAssistant = message.role === 'assistant';
 
-  const actionChips = message.decision?.rulesApplied?.map((rule, i) => (
-    <span key={i} className="px-2 py-0.5 text-xs rounded-full bg-primary/10 text-primary border border-primary/20">
-      {rule}
+  // Chips de ação vêm das tool calls REAIS executadas pelo agent nesse
+  // turno (capturadas em nexo-agent.ts a partir do retorno do Mastra), não
+  // de texto escrito pelo próprio modelo. É o requisito de transparência
+  // mais importante do desafio.
+  const actionChips = message.toolCalls?.map((call, i) => (
+    <span
+      key={i}
+      className="px-2 py-0.5 text-xs rounded-full bg-primary/10 text-primary border border-primary/20"
+      title={call.toolName}
+    >
+      {call.label}
     </span>
   ));
 
@@ -448,15 +557,17 @@ function MessageBubble({
       )}
 
       <div className={`flex-1 max-w-[80%] ${isUser ? 'text-right' : ''}`}>
-        {!isUser && message.decision && (
+        {!isUser && (message.toolCalls?.length || message.decision) && (
           <div className="flex flex-wrap gap-1.5 mb-1.5" style={{ justifyContent: isUser ? 'flex-end' : 'flex-start' }}>
             {actionChips}
-            <button
-              onClick={() => onToggleDecision(isExpanded ? null : message.id)}
-              className="px-2 py-0.5 text-xs rounded-full bg-violet/10 text-violet-text border border-violet/20 hover:bg-violet/20 transition-colors"
-            >
-              {isExpanded ? 'Ocultar decisão' : 'Ver decisão'}
-            </button>
+            {message.decision && (
+              <button
+                onClick={() => onToggleDecision(isExpanded ? null : message.id)}
+                className="px-2 py-0.5 text-xs rounded-full bg-violet/10 text-violet-text border border-violet/20 hover:bg-violet/20 transition-colors"
+              >
+                {isExpanded ? 'Ocultar decisão' : 'Ver decisão'}
+              </button>
+            )}
           </div>
         )}
 
@@ -513,7 +624,14 @@ function MessageBubble({
         </div>
 
         {isExpanded && message.decision && (
-          <DecisionPanel decision={message.decision} getConfidenceColor={getConfidenceColor} />
+          <DecisionPanel
+            decision={message.decision}
+            toolCalls={message.toolCalls}
+            tokensIn={message.tokensIn}
+            tokensOut={message.tokensOut}
+            costUsd={message.costUsd}
+            getConfidenceColor={getConfidenceColor}
+          />
         )}
       </div>
 
@@ -547,6 +665,17 @@ function ConfirmationCard({
   onConfirm,
   onCancel,
 }: { draftId: string; onConfirm: (id: string) => void; onCancel: (id: string) => void }) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        e.preventDefault();
+        onConfirm(draftId);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [draftId, onConfirm]);
+
   return (
     <div className="confirmation-card">
       <div className="flex items-center gap-2 mb-2">
@@ -556,7 +685,7 @@ function ConfirmationCard({
         </svg>
         <span className="font-medium text-primary">Confirmar abertura do chamado?</span>
       </div>
-      <p className="text-sm text-ink-2 mb-4">Revise os dados abaixo antes de confirmar. O chamado será criado no sistema legado.</p>
+      <p className="text-sm text-ink-2 mb-4">Revise os dados acima antes de confirmar. O chamado será criado no sistema legado.</p>
       <div className="flex gap-2">
         <button onClick={() => onConfirm(draftId)} className="btn-primary flex-1">
           Confirmar e criar chamado
@@ -572,10 +701,19 @@ function ConfirmationCard({
 
 function DecisionPanel({
   decision,
+  toolCalls,
+  tokensIn,
+  tokensOut,
+  costUsd,
   getConfidenceColor,
-}: { decision: Message['decision']; getConfidenceColor: (conf: number) => string }) {
-  if (!decision) return null;
-
+}: {
+  decision: Decision;
+  toolCalls?: ToolCallTrace[];
+  tokensIn?: number;
+  tokensOut?: number;
+  costUsd?: number | string;
+  getConfidenceColor: (conf: number) => string;
+}) {
   return (
     <div className="mt-3 p-3 rounded-radius-10 bg-desk border border-rule" style={{ fontFamily: 'var(--font-schibsted-grotesk)' }}>
       <div className="space-y-3 text-sm">
@@ -599,7 +737,7 @@ function DecisionPanel({
                 }}
               />
             </div>
-            <span className={getConfidenceColor(decision.confidence)} font-mono font-medium>
+            <span className={`${getConfidenceColor(decision.confidence)} font-mono font-medium`}>
               {(decision.confidence * 100).toFixed(0)}%
             </span>
           </div>
@@ -616,6 +754,27 @@ function DecisionPanel({
                 <li key={i}>{rule}</li>
               ))}
             </ul>
+          </div>
+        )}
+        {toolCalls && toolCalls.length > 0 && (
+          <div>
+            <p className="font-medium text-ink-2 mb-1">O que o agent fez</p>
+            <ul className="space-y-1.5 text-ink-2">
+              {toolCalls.map((call, i) => (
+                <li key={i} className="font-mono text-xs bg-white rounded-radius-6 border border-rule p-2">
+                  <span className="font-semibold text-ink">{call.toolName}</span>
+                  {call.input !== undefined && (
+                    <div className="mt-0.5 text-ink-3 truncate">entrada: {JSON.stringify(call.input)}</div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {(tokensIn !== undefined || tokensOut !== undefined) && (
+          <div className="pt-2 border-t border-rule text-xs text-ink-3 font-mono">
+            {tokensIn ?? 0} tokens in · {tokensOut ?? 0} tokens out
+            {costUsd !== undefined && ` · $${Number(costUsd).toFixed(6)}`}
           </div>
         )}
       </div>

@@ -73,6 +73,7 @@ export const listarMeusChamados = createTool({
     })),
     error: z.string().optional(),
   }),
+  // Mastra não exporta um tipo público para RequestContext aqui; getRaw() é a API usada.
   execute: async ({ status }: { status?: string }, context: { requestContext: any }) => {
     try {
       const userId = context.requestContext.getRaw('userId') as number;
@@ -136,6 +137,7 @@ export const obterChamado = createTool({
     }).nullable(),
     error: z.string().optional(),
   }),
+  // Mastra não exporta um tipo público para RequestContext aqui; getRaw() é a API usada.
   execute: async ({ numero }: { numero: string }, context: { requestContext: any }) => {
     try {
       const userId = context.requestContext.getRaw('userId') as number;
@@ -211,7 +213,19 @@ export const prepararRascunho = createTool({
     error: z.string().optional(),
     warnings: z.array(z.string()).optional(),
   }),
-  execute: async (input: any, context: { requestContext: any }) => {
+  execute: async (
+    input: {
+      tipo: 'novo' | 'atualizacao' | 'reabertura';
+      titulo: string;
+      descricao: string;
+      tipoChamado?: 'INC' | 'REQ';
+      categoria?: 'Acesso' | 'Rede e VPN' | 'Hardware' | 'Software' | 'E-mail' | 'Outros';
+      prioridade?: 'critica' | 'alta' | 'media' | 'baixa';
+      chamadoId?: number;
+      numeroChamado?: string;
+    },
+    context: { requestContext: any } // Mastra não exporta um tipo público para RequestContext aqui; getRaw() é a API usada.
+  ) => {
     try {
       const userId = context.requestContext.getRaw('userId') as number;
       const conversationId = context.requestContext.getRaw('conversationId') as number;
@@ -236,8 +250,8 @@ export const prepararRascunho = createTool({
         const allOpenTickets = [...userTickets, ...userTicketsEmAndamento];
 
         const similarTicket = allOpenTickets.find(t =>
-          t.title.toLowerCase().includes(titulo.toLowerCase().split(' ')[0]) ||
-          titulo.toLowerCase().includes(t.title.toLowerCase().split(' ')[0])
+          t.title.toLowerCase().includes(titulo.toLowerCase().split(' ')[0] ?? '') ||
+          titulo.toLowerCase().includes(t.title.toLowerCase().split(' ')[0] ?? '')
         );
 
         if (similarTicket) {
@@ -331,6 +345,7 @@ export const transferirParaAnalista = createTool({
     message: z.string(),
     error: z.string().optional(),
   }),
+  // Mastra não exporta um tipo público para RequestContext aqui; getRaw() é a API usada.
   execute: async ({ motivo, resumo }: { motivo: string; resumo: string }, context: { requestContext: any }) => {
     try {
       const conversationId = context.requestContext.getRaw('conversationId') as number;

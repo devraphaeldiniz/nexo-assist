@@ -57,6 +57,15 @@ app/ (Interface) → agent/ (LLM) → services/ (Negócio) → db/ (Dados)
 4. **SQLite em arquivo**: Requer volume persistente no deploy; não funciona no Vercel puro.
 5. **Haiku como default**: 10x mais barato que Sonnet; qualidade suficiente para classificação + tools.
 6. **Limite 30 mensagens por sessão**: Nova sessão carrega resumo da anterior (não implementado completamente, apenas contador).
+7. **Senha não validada no login**: Autenticação simulada (qualquer senha não-vazia autentica pelo e-mail). Fora do escopo do desafio — real exigiria hash+salt e fluxo de recuperação.
+8. **Scripts fora do Next.js carregam `.env` manualmente**: `tsx` (migrate/seed/reset, evals) e Vitest não carregam `.env` automaticamente como o runtime do Next.js faz. Cada um importa `dotenv/config` explicitamente para garantir que leem o mesmo `DB_PATH` usado por `npm run dev` — sem isso, migrate/seed escreviam no arquivo de banco default (`data/nexo-assist.db`) em vez do configurado no `.env` (`data/nexod.db`), causando falha de login por banco "vazio" do ponto de vista da aplicação.
+
+## Correções Pós-Revisão (29/10)
+
+- **fix(auth)**: `scripts/migrate.ts`, `scripts/seed.ts`, `scripts/reset.ts`, `evals/run.ts` não carregavam `.env` → `DB_PATH` undefined → migrate/seed gravavam no banco errado. Causa raiz do bug de login reportado.
+- **fix(tickets)**: `mapTicketRow` recalculava SLA a partir de `createdAt` em vez de usar o `dueAt` já persistido — gerava `isOverdue`/`businessHoursRemaining` errados para chamados reabertos (prazo reconta a partir da reabertura, não da criação original). Nova função `getSLAStatusFromDueAt` em `services/sla.ts`.
+- **test**: criado `vitest.config.mts` (não existia) para resolver o alias `@/*` e carregar `.env`/`DB_PATH` — sem isso os testes rodavam contra o banco errado silenciosamente.
+- **clean code**: removidos 4 `eslint-disable` órfãos (regra não configurada); adicionados tipos explícitos ao input de `prepararRascunho` (revelou um `TS2345` real por `noUncheckedIndexedAccess`, corrigido com fallback `?? ''`); comentários justificando os `any` restantes (JOINs manuais sem tipo gerado pelo Drizzle, `RequestContext` do Mastra sem tipo público, payload JSON de draft) conforme exigido pelo CLAUDE.md.
 
 ## O que Faria com Mais Tempo
 

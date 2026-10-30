@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { db } from '@/db';
 import { users, helpArticles, tickets, conversations, messages, ticketEvents } from '@/db/schema';
 import { eq } from 'drizzle-orm';

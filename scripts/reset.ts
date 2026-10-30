@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { db } from '@/db';
 import { users, helpArticles, tickets, ticketEvents, conversations, messages, drafts } from '@/db/schema';
 import path from 'path';

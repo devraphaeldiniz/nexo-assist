@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { scenarios, EvalScenario } from './cenarios';
 import { runAgent } from '@/agent/nexo-agent';
 import { db } from '@/db';

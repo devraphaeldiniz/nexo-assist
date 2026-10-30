@@ -71,6 +71,23 @@ describe('Guardrails', () => {
       expect(result.modifiedTurn?.decision.action).toContain('Aguardando confirmação');
     });
 
+    it('preserva o ui do rascunho ao bloquear escrita sem confirmação (regressão: sem isso o card de confirmação nunca aparece)', () => {
+      const writeTurn: AgentTurn = {
+        ...baseTurn,
+        ui: { kind: 'draft', draftId: 'draft-123-D-000001' },
+        decision: { ...baseTurn.decision, intent: 'abrir_chamado' },
+      };
+
+      const result = applyGuardrails(writeTurn, {
+        conversationState: 'agent',
+        hasConfirmation: false,
+        isWritingAction: true,
+      });
+
+      expect(result.allowed).toBe(false);
+      expect(result.modifiedTurn?.ui).toEqual({ kind: 'draft', draftId: 'draft-123-D-000001' });
+    });
+
     it('permite escrita com confirmação', () => {
       const writeTurn: AgentTurn = {
         ...baseTurn,

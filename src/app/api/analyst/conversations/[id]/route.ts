@@ -25,6 +25,9 @@ export async function GET(
 
     const messages = await conversationsService.getMessages(conversationId, 100);
 
+    // TicketWithDetails[] seria o tipo correto, mas inferir isso exigiria
+    // importar o tipo de services/tickets/client só para esta variável local
+    // de curta duração — o retorno já é tipado no `listByRequester` abaixo.
     let userTickets: any[] = [];
     if (conversation.userId) {
       userTickets = await ticketsClient.listByRequester(conversation.userId);
