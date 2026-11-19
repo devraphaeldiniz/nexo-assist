@@ -61,3 +61,6 @@ eval-report.json
 
 # OS
 Thumbs.db
+# arquivos de agentes de IA (locais)
+CLAUDE.md
+AGENTS.md
